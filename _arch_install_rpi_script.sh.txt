@@ -1,0 +1,123 @@
+#2018-06-29
+#
+# ten dziala - jest nieoficjalny - ryzykowne 
+#https://sourceforge.net/projects/rasparch/
+#
+# in next months a version of official arch Linux that run on RPI 3 B+ will be released. until that #install arch on RPI 3 Model B and after attempt compile the RPI kernel to run on RPI 3 Model B+.
+#
+#Follow a way to install arch on raspberry PI Model B:
+#build an installRpi.sh with the following content (and edit the device variable if is necessary):
+
+
+# arch raspberry PI 3 Model B with kernel version is 4.16.6.1-ARCH
+# run the installRpi.sh with sd card on computer. and follow the instructions
+#
+#sh installRpi.sh
+
+
+device=sdb
+rpiVersion=rpi-3
+bootDir=/mnt/boot
+rootDir=/mnt/root
+archFilePath=/mnt
+archTarFile=ArchLinuxARM-${rpiVersion}-latest.tar.gz
+archTarFilePath=${archFilePath}/${archTarFile}
+
+# Author Rafael Peres dos Santos
+
+echo "this run sucessfully with ArchLinuxARM-rpi-3-latest.tar.gz that runs on raspberry PI 3 B"
+
+echo "installing required packages"
+# yum info *md5*  # list availables md5 softwares
+yum install bsdtar dosfstools perl-Digest-MD5-File -y
+
+echo "************************************************************************"
+echo ""
+echo "sd partitions Ok [y/n]"
+read -p "" sdPartitionsOk
+
+if [ "$sdPartitionsOk" == "n" ]; then
+   echo "Wish build sd partitions automatically [y/n]"
+   read -p "" wishBuildSdPartitionsAutomatically
+   if [ "$wishBuildSdPartitionsAutomatically" == "y" ]; then
+      echo "fdisk /dev/${device}"
+
+# run ok with sd with 8gb, may with higher sd and or another sd brands
+      (
+      echo o # to remove partitions
+      echo n # to add a new partition
+      echo p # to set as primary partition
+      echo 1 # to set partition number as 1
+      echo   # to set the First sector with default
+      echo +100M
+      echo t # to set the type of partition
+      echo c # to set FAT32 partition
+      echo a # to set the previus partition as bootable
+      echo n # to add a new partition
+      echo p # to set as primary partition
+      echo 2 # to set the partion number as 2
+      echo   # to set First sector with default
+      echo   
+      echo p
+      echo w # Write changes
+      echo q # to exit from fdisk
+      ) | fdisk /dev/${device}
+      
+      #mkfs.vfat -F32 /dev/${device}1
+      #mkfs.vfat /dev/${device}1
+      #mkfs.vfat /dev/${device}1
+      echo "mkfs.vfat -F32 -s 2 /dev/${device}1"
+      mkfs.vfat -F32 -s 2 /dev/${device}1
+      echo "mkfs -t ext4 /dev/${device}2"
+      mkfs -t ext4 /dev/${device}2
+
+      else
+         echo "build sd partitions manually and run this .sh file"
+         exit 1
+   fi
+
+fi
+
+cd ${archFilePath}
+if [ ! -f "${archTarFile}" ]; then
+   wget http://os.archlinuxarm.org/os/${archTarFile}
+   wget http://os.archlinuxarm.org/os/${archTarFile}.md5
+   archMd5=$(< ${archTarFile}.md5)
+        archTarFileMd5=$(md5sum ${archTarFile})
+          echo -e "archMd5: $archMd5\n${archTarFileMd5}\n"
+   echo -e "\n${archTarFile} md5 match [y/n]"
+   read -p "" archMd5Match
+   if [ "$archMd5Match" == "n" ]; then
+      echo "${archTarFile} md5 not match"
+      exit 1   
+   fi
+fi
+ 
+mkdir -p $bootDir $rootDir
+umount $bootDir $rootDir
+
+echo "bsdtar -xpf ${archTarFile} -C root"
+mount /dev/${device}2 $rootDir
+bsdtar -xpf $archTarFile -C root
+echo "sync"
+sync # this leave minute(s) to finish
+# to display the progress of sync cmd # watch grep -e Dirty: -e Writeback: /proc/meminfo
+
+echo "mv root/boot/* boot"
+mount /dev/${device}1 $bootDir
+
+if [ "$rpiVersion" == "rpi-3" ]; then
+   rsync -a root/boot/* boot
+   rm -rf root/boot/
+   else
+      mv root/boot/* boot
+fi
+
+umount $bootDir $rootDir
+
+echo "remove installed packages [y/n]"
+read -p "" removeInstalledPackages
+if [ "$removeInstalledPackages" == "y" ]; then
+   yum remove bsdtar dosfstools perl-Digest-MD5-File -y
+ 
+fi
